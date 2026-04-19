@@ -29,6 +29,10 @@ export default async function handler(req, res) {
       headers: {
         accept: "application/json",
         "x-portal-token": token,
+        // Some edge protections challenge non-browser user agents; mimic a browser.
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+        "accept-language": "en-GB,en;q=0.9",
       },
     });
 
