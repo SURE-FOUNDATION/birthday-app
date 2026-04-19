@@ -5,7 +5,9 @@ import Footer from "./components/Footer.jsx";
 
 function Topbar({ user }) {
   const school = user?.school || null;
-  const logoUrl = (school && typeof school.logo_url === "string" && school.logo_url) ? school.logo_url : "";
+  const remoteLogoUrl =
+    school && typeof school.logo_url === "string" && school.logo_url ? school.logo_url : "";
+  const logoUrl = remoteLogoUrl || "/logo.png";
 
   return (
     <div className="topbar">
