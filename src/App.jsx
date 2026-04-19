@@ -1,13 +1,18 @@
 import { BrowserRouter, Route, Routes, Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import Dashboard from "./pages/Dashboard.jsx";
+import Footer from "./components/Footer.jsx";
 
 function Topbar({ user }) {
+  const school = user?.school || null;
+  const logoUrl = (school && typeof school.logo_url === "string" && school.logo_url) ? school.logo_url : "";
+
   return (
     <div className="topbar">
       <div className="brand">
         <Link to="/" className="brand-link">
-          SFGS Birthdays
+          {logoUrl ? <img className="brand-logo" src={logoUrl} alt="School logo" /> : null}
+          <span>{school?.name || "SFGS Birthdays"}</span>
         </Link>
         <span className="brand-sub">Email sender dashboard</span>
       </div>
@@ -60,6 +65,7 @@ export default function App() {
             <Route path="/" element={<Dashboard user={user} />} />
           </Routes>
         </div>
+        <Footer school={user?.school || null} />
       </div>
     </BrowserRouter>
   );

@@ -13,7 +13,7 @@ export default function handler(req, res) {
       admin_id: session.user.admin_id,
       email: session.user.email,
       fullname: session.user.fullname || "",
+      school: session.user.school || null,
     },
   });
 }
-

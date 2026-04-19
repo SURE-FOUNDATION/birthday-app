@@ -32,7 +32,7 @@ create table if not exists public.birthday_email_logs (
   reg_number text not null,
   student_name text not null,
   recipient_email text not null,
-  status text not null check (status in ('sent', 'failed')),
+  status text not null check (status in ('pending', 'sent', 'failed')),
   provider_message_id text null,
   error text null,
   created_at timestamptz not null default now()
@@ -72,4 +72,3 @@ create policy "birthday_settings_update"
   to authenticated
   using (true)
   with check (true);
-

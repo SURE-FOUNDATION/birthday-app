@@ -80,6 +80,31 @@ async function supabaseInsert(
   return await res.json();
 }
 
+async function supabaseUpsertIgnoreDuplicates(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  table: string,
+  row: Record<string, unknown>,
+  onConflict: string,
+) {
+  const url = `${supabaseUrl}/rest/v1/${table}?on_conflict=${encodeURIComponent(onConflict)}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      ...jsonHeaders,
+      apikey: serviceRoleKey,
+      authorization: `Bearer ${serviceRoleKey}`,
+      prefer: "resolution=ignore-duplicates,return=representation",
+    },
+    body: JSON.stringify(row),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Supabase upsert failed (${res.status}): ${text}`);
+  }
+  return await res.json();
+}
+
 async function supabaseUpdate(
   supabaseUrl: string,
   serviceRoleKey: string,
@@ -264,9 +289,35 @@ Deno.serve(async (req) => {
       if (recipients.length === 0) continue;
 
       for (const email of recipients) {
-        // Dedupe by unique constraint: (date, reg_number, recipient_email)
         const subject = `Happy Birthday ${birthday.name}!`;
         try {
+          // Reserve first (prevents double-send across concurrent runs).
+          // Dedupe by unique constraint: (date, reg_number, recipient_email)
+          const pendingRows = await supabaseUpsertIgnoreDuplicates(
+            supabaseUrl,
+            serviceRoleKey,
+            "birthday_email_logs",
+            {
+              run_id: runId || null,
+              date: portalData.date,
+              reg_number: birthday.reg_number,
+              student_name: birthday.name,
+              recipient_email: email,
+              status: "pending",
+              provider_message_id: null,
+              error: null,
+              created_at: nowIso(),
+            },
+            "date,reg_number,recipient_email",
+          );
+
+          const pending = pendingRows?.[0];
+          const logId = Number(pending?.id ?? 0);
+          if (!logId) {
+            // Already reserved/sent earlier today.
+            continue;
+          }
+
           const brevo = await sendBrevoEmail(
             brevoKey,
             senderEmail,
@@ -276,32 +327,41 @@ Deno.serve(async (req) => {
             buildEmailHtml(birthday.name),
           );
 
-          await supabaseInsert(supabaseUrl, serviceRoleKey, "birthday_email_logs", {
-            run_id: runId || null,
-            date: portalData.date,
-            reg_number: birthday.reg_number,
-            student_name: birthday.name,
-            recipient_email: email,
-            status: "sent",
-            provider_message_id: brevo?.messageId ?? null,
-            error: null,
-            created_at: nowIso(),
-          });
+          await supabaseUpdate(
+            supabaseUrl,
+            serviceRoleKey,
+            "birthday_email_logs",
+            { id: `eq.${logId}` },
+            {
+              run_id: runId || null,
+              status: "sent",
+              provider_message_id: brevo?.messageId ?? null,
+              error: null,
+            },
+          );
           sent++;
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           try {
-            await supabaseInsert(supabaseUrl, serviceRoleKey, "birthday_email_logs", {
-              run_id: runId || null,
-              date: portalData.date,
-              reg_number: birthday.reg_number,
-              student_name: birthday.name,
-              recipient_email: email,
-              status: "failed",
-              provider_message_id: null,
-              error: message,
-              created_at: nowIso(),
-            });
+            // If the reservation insert failed due to duplicates we would have skipped,
+            // but for other failures, try to write a standalone failed record.
+            await supabaseUpsertIgnoreDuplicates(
+              supabaseUrl,
+              serviceRoleKey,
+              "birthday_email_logs",
+              {
+                run_id: runId || null,
+                date: portalData.date,
+                reg_number: birthday.reg_number,
+                student_name: birthday.name,
+                recipient_email: email,
+                status: "failed",
+                provider_message_id: null,
+                error: message,
+                created_at: nowIso(),
+              },
+              "date,reg_number,recipient_email",
+            );
           } catch {
             // ignore logging failures
           }
@@ -336,4 +396,3 @@ Deno.serve(async (req) => {
     });
   }
 });
-
