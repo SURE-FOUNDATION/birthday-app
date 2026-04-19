@@ -17,6 +17,11 @@ type PortalResponse = {
   birthdays: BirthdayRow[];
 };
 
+type TriggerPayload = Partial<PortalResponse> & {
+  dry_run?: boolean;
+  portal_data?: PortalResponse;
+};
+
 const jsonHeaders = {
   "content-type": "application/json; charset=utf-8",
 };
@@ -223,6 +228,16 @@ function dedupeEmails(row: BirthdayRow): string[] {
   return Array.from(new Set(emails));
 }
 
+async function readJsonBody(req: Request): Promise<TriggerPayload | null> {
+  const contentType = req.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) return null;
+  try {
+    return await req.json();
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", {
@@ -235,6 +250,10 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const url = new URL(req.url);
+    const payload = await readJsonBody(req);
+    const dryRun = url.searchParams.get("dry_run") === "1" || payload?.dry_run === true;
+
     const supabaseUrl = env("SUPABASE_URL");
     const serviceRoleKey = env("SUPABASE_SERVICE_ROLE_KEY");
     const portalApiUrl = env("PORTAL_BIRTHDAYS_API_URL");
@@ -244,8 +263,8 @@ Deno.serve(async (req) => {
     const senderName = env("BREVO_SENDER_NAME", "SFGS");
 
     if (!supabaseUrl || !serviceRoleKey) throw new Error("Missing Supabase env vars.");
-    if (!portalApiUrl || !portalToken) throw new Error("Missing portal API env vars.");
-    if (!brevoKey || !senderEmail) throw new Error("Missing Brevo env vars.");
+    if (!dryRun && (!portalApiUrl || !portalToken)) throw new Error("Missing portal API env vars.");
+    if (!dryRun && (!brevoKey || !senderEmail)) throw new Error("Missing Brevo env vars.");
 
     // Load settings (single row id=1)
     const settingsRows = await supabaseSelect(
@@ -271,7 +290,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    const portalData = await fetchPortalBirthdays(portalApiUrl, portalToken);
+    const portalDataFromBody = payload?.portal_data ?? (
+      payload?.success === true && payload?.date && payload?.count !== undefined && Array.isArray(payload?.birthdays)
+        ? payload as PortalResponse
+        : null
+    );
+
+    const portalData = portalDataFromBody ?? await fetchPortalBirthdays(portalApiUrl, portalToken);
 
     // Log run start
     const run = (await supabaseInsert(supabaseUrl, serviceRoleKey, "birthday_runs", {
@@ -318,14 +343,16 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          const brevo = await sendBrevoEmail(
-            brevoKey,
-            senderEmail,
-            senderName,
-            email,
-            subject,
-            buildEmailHtml(birthday.name),
-          );
+          const brevo = dryRun
+            ? { messageId: "dry_run" }
+            : await sendBrevoEmail(
+              brevoKey,
+              senderEmail,
+              senderName,
+              email,
+              subject,
+              buildEmailHtml(birthday.name),
+            );
 
           await supabaseUpdate(
             supabaseUrl,
@@ -385,7 +412,7 @@ Deno.serve(async (req) => {
       last_run_failed: failed,
     });
 
-    return new Response(JSON.stringify({ success: true, date: portalData.date, sent, failed }), {
+    return new Response(JSON.stringify({ success: true, date: portalData.date, sent, failed, dry_run: dryRun }), {
       headers: jsonHeaders,
     });
   } catch (err) {
