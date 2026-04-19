@@ -7,6 +7,22 @@ function formatDateTime(value) {
   return date.toLocaleString();
 }
 
+function cronForMinutes(minutes) {
+  const m = Number(minutes);
+  if (!Number.isFinite(m) || m <= 0) return "*/5 * * * *";
+  if (m === 1) return "* * * * *";
+  return `*/${m} * * * *`;
+}
+
+function minutesFromCron(cron) {
+  const s = String(cron || "").trim();
+  if (s === "* * * * *") return 1;
+  const match = /^\*\/(\d+)\s+\*\s+\*\s+\*\s+\*$/.exec(s);
+  if (!match) return "";
+  const n = Number(match[1]);
+  return Number.isFinite(n) && n > 0 ? n : "";
+}
+
 export default function Dashboard({ user }) {
   const [settings, setSettings] = useState(null);
   const [cron, setCron] = useState(null);
@@ -17,6 +33,8 @@ export default function Dashboard({ user }) {
   const [birthdayError, setBirthdayError] = useState("");
   const [status, setStatus] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [showAdvancedCron, setShowAdvancedCron] = useState(false);
+  const [cronDirty, setCronDirty] = useState(false);
 
   const load = async () => {
     setStatus(null);
@@ -36,6 +54,7 @@ export default function Dashboard({ user }) {
 
       setSettings(settingsRes.settings ?? null);
       setCron(settingsRes.cron ?? null);
+      setCronDirty(false);
       setRuns(runsRes.runs ?? []);
       setLogs(logsRes.logs ?? []);
 
@@ -190,25 +209,60 @@ export default function Dashboard({ user }) {
               </label>
 
               <label className="label">
-                Interval (cron)
-                <input
+                Run every
+                <select
                   className="input"
-                  value={cron?.schedule ?? "*/5 * * * *"}
-                  onChange={(e) => setCron((c) => ({ ...(c || {}), schedule: e.target.value }))}
+                  value={minutesFromCron(cron?.schedule) || 5}
+                  onChange={(e) => {
+                    const minutes = Number(e.target.value);
+                    setCron((c) => ({ ...(c || {}), schedule: cronForMinutes(minutes) }));
+                    setCronDirty(true);
+                  }}
                   disabled={saving}
-                  placeholder="*/5 * * * *"
-                />
-                <div className="muted">Example: */5 * * * * (every 5 minutes), * * * * * (every minute)</div>
+                >
+                  <option value={1}>1 minute</option>
+                  <option value={5}>5 minutes</option>
+                  <option value={10}>10 minutes</option>
+                  <option value={15}>15 minutes</option>
+                  <option value={30}>30 minutes</option>
+                  <option value={60}>60 minutes</option>
+                </select>
               </label>
+
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={async () => {
+                  await updateSettings({ cron_schedule: cron?.schedule ?? "*/5 * * * *" });
+                  setCronDirty(false);
+                }}
+                disabled={saving || !cronDirty}
+              >
+                Save scheduler
+              </button>
 
               <button
                 className="btn btn-secondary"
                 type="button"
-                onClick={() => updateSettings({ cron_schedule: cron?.schedule ?? "*/5 * * * *" })}
+                onClick={() => setShowAdvancedCron((v) => !v)}
                 disabled={saving}
               >
-                Save scheduler
+                {showAdvancedCron ? "Hide advanced" : "Advanced"}
               </button>
+
+              {showAdvancedCron && (
+                <label className="label">
+                  Cron expression
+                  <input
+                    className="input"
+                    value={cron?.schedule ?? "*/5 * * * *"}
+                    onChange={(e) => setCron((c) => ({ ...(c || {}), schedule: e.target.value }))}
+                    disabled={saving}
+                    placeholder="*/5 * * * *"
+                  />
+                  <div className="muted">Format: minute hour day month weekday</div>
+                </label>
+              )}
             </div>
           ) : (
             <div className="muted">No settings row found. Run the SQL in `birthday-app/supabase/schema.sql`.</div>
