@@ -19,6 +19,7 @@
 html,
 body {
   height: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -733,6 +734,7 @@ a {
   gap: 28px;
   padding: 20px 0 40px;
   position: relative;
+  overflow: hidden;
 }
 
 .splash-glow-1,
