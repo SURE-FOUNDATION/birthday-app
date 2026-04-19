@@ -94,8 +94,8 @@ export default function Dashboard({ user }) {
     return {
       lastRunAt: lastRun?.ran_at ?? settings?.last_run_at ?? null,
       lastStatus: lastRun?.status ?? "",
-      lastSent: settings?.last_run_sent ?? 0,
-      lastFailed: settings?.last_run_failed ?? 0,
+      lastSent: lastRun?.sent_count ?? settings?.last_run_sent ?? 0,
+      lastFailed: lastRun?.failed_count ?? settings?.last_run_failed ?? 0,
     };
   }, [lastRun, settings]);
 
