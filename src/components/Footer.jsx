@@ -4,41 +4,48 @@ export default function Footer({ school }) {
   const phone = school?.phone || "";
   const email = school?.email || "";
 
+  const hasContact = address || phone || email;
+
   return (
     <footer className="footer">
       <div className="footer-inner">
         <div className="footer-col">
-          <div className="footer-title">{name}</div>
+          <div className="footer-brand-row">
+            <img src="/logo.png?v=1" alt="School logo" className="footer-logo" />
+            <div className="footer-title">{name}</div>
+          </div>
           <div className="footer-text">
             Birthday sender dashboard connected to the school portal.
           </div>
         </div>
 
-        <div className="footer-col">
-          <div className="footer-title">Contact</div>
-          {address && <div className="footer-text">{address}</div>}
-          {phone && (
-            <div className="footer-text">
-              <a href={`tel:${phone}`}>{phone}</a>
-            </div>
-          )}
-          {email && (
-            <div className="footer-text">
-              <a href={`mailto:${email}`}>{email}</a>
-            </div>
-          )}
-        </div>
+        {hasContact && (
+          <div className="footer-col">
+            <div className="footer-title">Contact</div>
+            {address && <div className="footer-text">{address}</div>}
+            {phone && (
+              <div className="footer-text">
+                <a href={`tel:${phone}`}>{phone}</a>
+              </div>
+            )}
+            {email && (
+              <div className="footer-text">
+                <a href={`mailto:${email}`}>{email}</a>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="footer-col">
-          <div className="footer-title">Links</div>
+          <div className="footer-title">Quick Links</div>
           <div className="footer-text">
             <a href="https://portal.sfgs.com.ng/" target="_blank" rel="noopener noreferrer">
-              Portal
+              SFGS Portal
             </a>
           </div>
           <div className="footer-text">
             <a href="https://www.sfgs.com.ng/" target="_blank" rel="noopener noreferrer">
-              Website
+              School Website
             </a>
           </div>
         </div>
@@ -50,4 +57,3 @@ export default function Footer({ school }) {
     </footer>
   );
 }
-

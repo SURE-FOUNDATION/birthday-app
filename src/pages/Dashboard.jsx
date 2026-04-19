@@ -1,4 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  RefreshCw,
+  Save,
+  Settings2,
+  ChevronDown,
+  ChevronUp,
+  CakeSlice,
+  Mail,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Send,
+  AlertTriangle,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  ToggleLeft,
+  CalendarDays,
+  User,
+  Hash,
+  GraduationCap,
+  Cake,
+} from "lucide-react";
 
 function formatDateTime(value) {
   if (!value) return "";
@@ -12,7 +35,9 @@ async function fetchJson(url, init) {
   const ct = (res.headers.get("content-type") || "").toLowerCase();
   if (!ct.includes("application/json")) {
     const text = await res.text().catch(() => "");
-    throw new Error(`${url} returned ${res.status} (${ct || "no content-type"}): ${text.slice(0, 120)}`);
+    throw new Error(
+      `${url} returned ${res.status} (${ct || "no content-type"}): ${text.slice(0, 120)}`
+    );
   }
   const data = await res.json();
   if (!res.ok) {
@@ -38,6 +63,67 @@ function minutesFromCron(cron) {
   return Number.isFinite(n) && n > 0 ? n : "";
 }
 
+const PAGE_SIZE = 10;
+
+function usePagination(items) {
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const slice = items.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(1);
+  }, [items.length]);
+
+  return { page: safePage, setPage, totalPages, slice };
+}
+
+function Pagination({ page, totalPages, setPage, total }) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="pagination">
+      <span className="pagination-info">
+        Page {page} of {totalPages} &bull; {total} record{total !== 1 ? "s" : ""}
+      </span>
+      <div className="pagination-controls">
+        <button
+          className="page-btn"
+          onClick={() => setPage(page - 1)}
+          disabled={page === 1}
+          aria-label="Previous page"
+        >
+          <ChevronLeft size={15} />
+        </button>
+        {Array.from({ length: totalPages }, (_, i) => i + 1)
+          .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+          .reduce((acc, p, idx, arr) => {
+            if (idx > 0 && p - arr[idx - 1] > 1) {
+              acc.push(<span key={`ellipsis-${p}`} className="page-ellipsis">…</span>);
+            }
+            acc.push(
+              <button
+                key={p}
+                className={`page-btn${p === page ? " active" : ""}`}
+                onClick={() => setPage(p)}
+              >
+                {p}
+              </button>
+            );
+            return acc;
+          }, [])}
+        <button
+          className="page-btn"
+          onClick={() => setPage(page + 1)}
+          disabled={page === totalPages}
+          aria-label="Next page"
+        >
+          <ChevronRight size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard({ user }) {
   const [settings, setSettings] = useState(null);
   const [cron, setCron] = useState(null);
@@ -51,6 +137,10 @@ export default function Dashboard({ user }) {
   const [cronDirty, setCronDirty] = useState(false);
   const [lastRun, setLastRun] = useState(null);
 
+  const [bdSearch, setBdSearch] = useState("");
+  const [logSearch, setLogSearch] = useState("");
+  const [logStatusFilter, setLogStatusFilter] = useState("all");
+
   const load = async () => {
     setStatus(null);
     setBirthdayError("");
@@ -58,7 +148,7 @@ export default function Dashboard({ user }) {
       const [settingsRes, runsRes, logsRes, birthdaysRes] = await Promise.all([
         fetchJson("/api/settings"),
         fetchJson("/api/runs?limit=1"),
-        fetchJson("/api/logs?limit=50"),
+        fetchJson("/api/logs?limit=200"),
         fetchJson("/api/birthdays?limit=200"),
       ]);
 
@@ -70,7 +160,7 @@ export default function Dashboard({ user }) {
       setSettings(settingsRes.settings ?? null);
       setCron(settingsRes.cron ?? null);
       setCronDirty(false);
-      setLastRun((runsRes.runs && runsRes.runs[0]) ? runsRes.runs[0] : null);
+      setLastRun(runsRes.runs && runsRes.runs[0] ? runsRes.runs[0] : null);
       setLogs(logsRes.logs ?? []);
 
       if (birthdaysRes?.success) {
@@ -123,12 +213,41 @@ export default function Dashboard({ user }) {
     await load();
   };
 
+  const filteredBirthdays = useMemo(() => {
+    const q = bdSearch.toLowerCase().trim();
+    if (!q) return birthdays;
+    return birthdays.filter(
+      (b) =>
+        (b.name || "").toLowerCase().includes(q) ||
+        (b.reg_number || "").toLowerCase().includes(q) ||
+        (b.class || "").toLowerCase().includes(q)
+    );
+  }, [birthdays, bdSearch]);
+
+  const filteredLogs = useMemo(() => {
+    const q = logSearch.toLowerCase().trim();
+    return logs.filter((l) => {
+      const matchesSearch =
+        !q ||
+        (l.student_name || "").toLowerCase().includes(q) ||
+        (l.recipient_email || "").toLowerCase().includes(q) ||
+        (l.date || "").toLowerCase().includes(q);
+      const matchesStatus =
+        logStatusFilter === "all" || l.status === logStatusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [logs, logSearch, logStatusFilter]);
+
+  const bdPagination = usePagination(filteredBirthdays);
+  const logPagination = usePagination(filteredLogs);
+
   if (!user) {
     return (
       <div className="card">
         <h1 className="h1">Open from the Portal</h1>
         <p className="muted">
-          This dashboard uses portal single sign-on. Open it from the SFGS portal sidebar: <strong>Birthdays</strong>.
+          This dashboard uses portal single sign-on. Open it from the SFGS portal sidebar:{" "}
+          <strong>Birthdays</strong>.
         </p>
       </div>
     );
@@ -137,61 +256,121 @@ export default function Dashboard({ user }) {
   return (
     <div className="stack">
       <div className="card">
-        <h2 className="h2">Today&apos;s Birthdays</h2>
-        <div className="muted" style={{ marginBottom: 10 }}>
-          {birthdayDate ? `Date: ${birthdayDate}` : "Date: —"} • {birthdays.length} student(s)
+        <div className="section-header">
+          <CakeSlice size={18} className="section-icon" />
+          <h2 className="h2">Today&apos;s Birthdays</h2>
+        </div>
+        <div className="muted" style={{ marginBottom: 12 }}>
+          <CalendarDays size={13} style={{ verticalAlign: "middle", marginRight: 4 }} />
+          {birthdayDate ? `Date: ${birthdayDate}` : "Date: —"}&nbsp;&bull;&nbsp;
+          {birthdays.length} student{birthdays.length !== 1 ? "s" : ""}
         </div>
 
-        {birthdayError && <div className="notice error">{birthdayError}</div>}
-
-        {birthdays.length === 0 ? (
-          <div className="muted">No birthdays found for today.</div>
-        ) : (
-          <div className="table-scroll">
-            <div className="table table-birthdays">
-              <div className="thead">
-                <div>Student</div>
-                <div>Reg No</div>
-                <div>Class</div>
-                <div>Age</div>
-              </div>
-              {birthdays.map((b) => (
-                <div key={`${b.reg_number}-${b.name}`} className="trow">
-                  <div className="cell-strong">{b.name}</div>
-                  <div className="mono">{b.reg_number}</div>
-                  <div>{b.class}</div>
-                  <div>{b.age ?? "—"}</div>
-                </div>
-              ))}
-            </div>
+        {birthdayError && (
+          <div className="notice error">
+            <AlertTriangle size={14} style={{ marginRight: 6, verticalAlign: "middle" }} />
+            {birthdayError}
           </div>
+        )}
+
+        <div className="search-bar">
+          <Search size={15} className="search-icon" />
+          <input
+            className="search-input"
+            type="search"
+            placeholder="Search by name, reg no, or class…"
+            value={bdSearch}
+            onChange={(e) => setBdSearch(e.target.value)}
+          />
+        </div>
+
+        {filteredBirthdays.length === 0 ? (
+          <div className="muted empty-state">
+            <CakeSlice size={32} opacity={0.3} />
+            <span>No birthdays found{bdSearch ? " matching your search" : " for today"}.</span>
+          </div>
+        ) : (
+          <>
+            <div className="table-scroll">
+              <div className="table table-birthdays">
+                <div className="thead">
+                  <div><User size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />Student</div>
+                  <div><Hash size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />Reg No</div>
+                  <div><GraduationCap size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />Class</div>
+                  <div><Cake size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />Age</div>
+                </div>
+                {bdPagination.slice.map((b) => (
+                  <div key={`${b.reg_number}-${b.name}`} className="trow">
+                    <div className="cell-strong">{b.name}</div>
+                    <div className="mono">{b.reg_number}</div>
+                    <div>{b.class}</div>
+                    <div>{b.age ?? "—"}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <Pagination
+              page={bdPagination.page}
+              totalPages={bdPagination.totalPages}
+              setPage={bdPagination.setPage}
+              total={filteredBirthdays.length}
+            />
+          </>
         )}
       </div>
 
       <div className="grid">
         <div className="card">
-          <h2 className="h2">Status</h2>
+          <div className="section-header">
+            <CheckCircle2 size={18} className="section-icon" />
+            <h2 className="h2">Status</h2>
+          </div>
           <div className="kv">
-            <div className="k">Last run</div>
+            <div className="k">
+              <Clock size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />
+              Last run
+            </div>
             <div className="v">{formatDateTime(summary.lastRunAt) || "—"}</div>
-            <div className="k">Last status</div>
-            <div className="v">{summary.lastStatus || "—"}</div>
-            <div className="k">Last sent</div>
+            <div className="k">
+              <CheckCircle2 size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />
+              Last status
+            </div>
+            <div className="v">
+              {summary.lastStatus ? (
+                <span className={`tag ${summary.lastStatus === "ok" || summary.lastStatus === "success" ? "ok" : "bad"}`}>
+                  {summary.lastStatus}
+                </span>
+              ) : "—"}
+            </div>
+            <div className="k">
+              <Send size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />
+              Last sent
+            </div>
             <div className="v">{summary.lastSent}</div>
-            <div className="k">Last failed</div>
+            <div className="k">
+              <XCircle size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />
+              Last failed
+            </div>
             <div className="v">{summary.lastFailed}</div>
           </div>
           <button className="btn btn-secondary" type="button" onClick={load}>
+            <RefreshCw size={14} style={{ marginRight: 6, verticalAlign: "middle" }} />
             Refresh
           </button>
         </div>
 
         <div className="card">
-          <h2 className="h2">Settings</h2>
+          <div className="section-header">
+            <Settings2 size={18} className="section-icon" />
+            <h2 className="h2">Settings</h2>
+          </div>
           {settings ? (
             <div className="form">
               <label className="label">
-                Enabled
+                <span className="label-text">
+                  <ToggleLeft size={13} style={{ marginRight: 4, verticalAlign: "middle" }} />
+                  Enabled
+                </span>
                 <select
                   className="input"
                   value={settings.enabled ? "yes" : "no"}
@@ -210,7 +389,10 @@ export default function Dashboard({ user }) {
               </div>
 
               <label className="label">
-                Cron enabled
+                <span className="label-text">
+                  <Clock size={13} style={{ marginRight: 4, verticalAlign: "middle" }} />
+                  Cron enabled
+                </span>
                 <select
                   className="input"
                   value={cron?.active ? "yes" : "no"}
@@ -223,7 +405,7 @@ export default function Dashboard({ user }) {
               </label>
 
               <label className="label">
-                Run every
+                <span className="label-text">Run every</span>
                 <select
                   className="input"
                   value={minutesFromCron(cron?.schedule) || 5}
@@ -252,6 +434,7 @@ export default function Dashboard({ user }) {
                 }}
                 disabled={saving || !cronDirty}
               >
+                <Save size={14} style={{ marginRight: 6, verticalAlign: "middle" }} />
                 Save scheduler
               </button>
 
@@ -261,12 +444,17 @@ export default function Dashboard({ user }) {
                 onClick={() => setShowAdvancedCron((v) => !v)}
                 disabled={saving}
               >
+                {showAdvancedCron ? (
+                  <ChevronUp size={14} style={{ marginRight: 6, verticalAlign: "middle" }} />
+                ) : (
+                  <ChevronDown size={14} style={{ marginRight: 6, verticalAlign: "middle" }} />
+                )}
                 {showAdvancedCron ? "Hide advanced" : "Advanced"}
               </button>
 
               {showAdvancedCron && (
                 <label className="label">
-                  Cron expression
+                  <span className="label-text">Cron expression</span>
                   <input
                     className="input"
                     value={cron?.schedule ?? "*/5 * * * *"}
@@ -279,43 +467,93 @@ export default function Dashboard({ user }) {
               )}
             </div>
           ) : (
-            <div className="muted">No settings row found. Run the SQL in `birthday-app/supabase/schema.sql`.</div>
+            <div className="muted">
+              No settings row found. Run the SQL in <code>supabase/schema.sql</code>.
+            </div>
           )}
         </div>
       </div>
 
-      {status && <div className="notice error">{status}</div>}
+      {status && (
+        <div className="notice error">
+          <AlertTriangle size={14} style={{ marginRight: 6, verticalAlign: "middle" }} />
+          {status}
+        </div>
+      )}
 
       <div className="card">
-        <h2 className="h2">Recent emails</h2>
-        <div className="table-scroll">
-        <div className="table">
-          <div className="thead">
-            <div>Time</div>
-            <div>Date</div>
-            <div>Student</div>
-            <div>Recipient</div>
-            <div>Status</div>
-            <div>Error</div>
+        <div className="section-header">
+          <Mail size={18} className="section-icon" />
+          <h2 className="h2">Recent Emails</h2>
+        </div>
+
+        <div className="filter-bar">
+          <div className="search-bar" style={{ flex: 1 }}>
+            <Search size={15} className="search-icon" />
+            <input
+              className="search-input"
+              type="search"
+              placeholder="Search by student, email, or date…"
+              value={logSearch}
+              onChange={(e) => setLogSearch(e.target.value)}
+            />
           </div>
-          {logs.length === 0 ? (
-            <div className="trow muted">No emails yet.</div>
-          ) : (
-            logs.map((l) => (
-              <div key={l.id} className="trow">
-                <div>{formatDateTime(l.created_at)}</div>
-                <div>{l.date}</div>
-                <div>{l.student_name}</div>
-                <div>{l.recipient_email}</div>
-                <div>
-                  <span className={`tag ${l.status === "sent" ? "ok" : "bad"}`}>{l.status}</span>
-                </div>
-                <div className="mono">{l.error || ""}</div>
+          <select
+            className="filter-select"
+            value={logStatusFilter}
+            onChange={(e) => setLogStatusFilter(e.target.value)}
+          >
+            <option value="all">All statuses</option>
+            <option value="sent">Sent</option>
+            <option value="failed">Failed</option>
+          </select>
+        </div>
+
+        <div className="table-scroll">
+          <div className="table">
+            <div className="thead">
+              <div><Clock size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />Time</div>
+              <div><CalendarDays size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />Date</div>
+              <div><User size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />Student</div>
+              <div><Mail size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />Recipient</div>
+              <div>Status</div>
+              <div><AlertTriangle size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />Error</div>
+            </div>
+            {filteredLogs.length === 0 ? (
+              <div className="trow-empty">
+                <Mail size={32} opacity={0.25} />
+                <span>{logs.length === 0 ? "No emails yet." : "No results match your filter."}</span>
               </div>
-            ))
-          )}
+            ) : (
+              logPagination.slice.map((l) => (
+                <div key={l.id} className="trow">
+                  <div>{formatDateTime(l.created_at)}</div>
+                  <div>{l.date}</div>
+                  <div>{l.student_name}</div>
+                  <div className="mono">{l.recipient_email}</div>
+                  <div>
+                    <span className={`tag ${l.status === "sent" ? "ok" : "bad"}`}>
+                      {l.status === "sent" ? (
+                        <CheckCircle2 size={11} style={{ marginRight: 4 }} />
+                      ) : (
+                        <XCircle size={11} style={{ marginRight: 4 }} />
+                      )}
+                      {l.status}
+                    </span>
+                  </div>
+                  <div className="mono">{l.error || ""}</div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
-        </div>
+
+        <Pagination
+          page={logPagination.page}
+          totalPages={logPagination.totalPages}
+          setPage={logPagination.setPage}
+          total={filteredLogs.length}
+        />
       </div>
     </div>
   );
