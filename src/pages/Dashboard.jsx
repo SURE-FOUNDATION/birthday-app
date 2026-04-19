@@ -1,0 +1,213 @@
+import { useEffect, useMemo, useState } from "react";
+
+function formatDateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString();
+}
+
+export default function Dashboard({ user }) {
+  const [settings, setSettings] = useState(null);
+  const [runs, setRuns] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [status, setStatus] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    setStatus(null);
+    try {
+      const [settingsRes, runsRes, logsRes] = await Promise.all([
+        fetch("/api/settings").then((r) => r.json()),
+        fetch("/api/runs?limit=20").then((r) => r.json()),
+        fetch("/api/logs?limit=50").then((r) => r.json()),
+      ]);
+
+      if (!settingsRes.success || !runsRes.success || !logsRes.success) {
+        setStatus(settingsRes.error || runsRes.error || logsRes.error || "Unable to load data.");
+        return;
+      }
+
+      setSettings(settingsRes.settings ?? null);
+      setRuns(runsRes.runs ?? []);
+      setLogs(logsRes.logs ?? []);
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Unable to load data.");
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const summary = useMemo(() => {
+    const last = runs?.[0];
+    return {
+      lastRunAt: last?.ran_at ?? settings?.last_run_at ?? null,
+      lastStatus: last?.status ?? "",
+      lastSent: settings?.last_run_sent ?? 0,
+      lastFailed: settings?.last_run_failed ?? 0,
+    };
+  }, [runs, settings]);
+
+  const updateSettings = async (updates) => {
+    if (!settings) return;
+    setSaving(true);
+    setStatus(null);
+    setSaving(false);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(updates),
+      }).then((r) => r.json());
+
+      if (!res.success) {
+        setStatus(res.error || "Unable to save settings.");
+        return;
+      }
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Unable to save settings.");
+      return;
+    }
+    await load();
+  };
+
+  if (!user) {
+    return (
+      <div className="card">
+        <h1 className="h1">Open from the Portal</h1>
+        <p className="muted">
+          This dashboard uses portal single sign-on. Open it from the SFGS portal sidebar: <strong>Birthdays</strong>.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="stack">
+      <div className="grid">
+        <div className="card">
+          <h2 className="h2">Status</h2>
+          <div className="kv">
+            <div className="k">Last run</div>
+            <div className="v">{formatDateTime(summary.lastRunAt) || "—"}</div>
+            <div className="k">Last status</div>
+            <div className="v">{summary.lastStatus || "—"}</div>
+            <div className="k">Last sent</div>
+            <div className="v">{summary.lastSent}</div>
+            <div className="k">Last failed</div>
+            <div className="v">{summary.lastFailed}</div>
+          </div>
+          <button className="btn btn-secondary" type="button" onClick={load}>
+            Refresh
+          </button>
+        </div>
+
+        <div className="card">
+          <h2 className="h2">Settings</h2>
+          {settings ? (
+            <div className="form">
+              <label className="label">
+                Enabled
+                <select
+                  className="input"
+                  value={settings.enabled ? "yes" : "no"}
+                  onChange={(e) => updateSettings({ enabled: e.target.value === "yes" })}
+                  disabled={saving}
+                >
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
+
+              <label className="label">
+                Interval (minutes)
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={settings.interval_minutes ?? 60}
+                  onChange={(e) => setSettings({ ...settings, interval_minutes: Number(e.target.value) })}
+                  disabled={saving}
+                />
+              </label>
+
+              <button
+                className="btn btn-primary"
+                type="button"
+                disabled={saving}
+                onClick={() => updateSettings({ interval_minutes: settings.interval_minutes ?? 60 })}
+              >
+                {saving ? "Saving..." : "Save interval"}
+              </button>
+            </div>
+          ) : (
+            <div className="muted">No settings row found. Run the SQL in `birthday-app/supabase/schema.sql`.</div>
+          )}
+        </div>
+      </div>
+
+      {status && <div className="notice error">{status}</div>}
+
+      <div className="card">
+        <h2 className="h2">Recent runs</h2>
+        <div className="table">
+          <div className="thead">
+            <div>Ran at</div>
+            <div>Date</div>
+            <div>Birthdays</div>
+            <div>Sent</div>
+            <div>Failed</div>
+            <div>Status</div>
+          </div>
+          {runs.length === 0 ? (
+            <div className="trow muted">No runs yet.</div>
+          ) : (
+            runs.map((r) => (
+              <div key={r.id} className="trow">
+                <div>{formatDateTime(r.ran_at)}</div>
+                <div>{r.date}</div>
+                <div>{r.birthday_count}</div>
+                <div>{r.sent_count}</div>
+                <div>{r.failed_count}</div>
+                <div>{r.status}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="card">
+        <h2 className="h2">Recent emails</h2>
+        <div className="table">
+          <div className="thead">
+            <div>Time</div>
+            <div>Date</div>
+            <div>Student</div>
+            <div>Recipient</div>
+            <div>Status</div>
+            <div>Error</div>
+          </div>
+          {logs.length === 0 ? (
+            <div className="trow muted">No emails yet.</div>
+          ) : (
+            logs.map((l) => (
+              <div key={l.id} className="trow">
+                <div>{formatDateTime(l.created_at)}</div>
+                <div>{l.date}</div>
+                <div>{l.student_name}</div>
+                <div>{l.recipient_email}</div>
+                <div>
+                  <span className={`tag ${l.status === "sent" ? "ok" : "bad"}`}>{l.status}</span>
+                </div>
+                <div className="mono">{l.error || ""}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
