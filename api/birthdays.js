@@ -12,7 +12,8 @@ export default async function handler(req, res) {
     return;
   }
 
-  const apiUrl = process.env.PORTAL_BIRTHDAYS_API_URL || "https://portal.sfgs.com.ng/?page=birthdays_api";
+  const baseUrl =
+    process.env.PORTAL_BIRTHDAYS_API_URL || "https://portal.sfgs.com.ng/?page=birthdays_api";
   const token = process.env.PORTAL_BIRTHDAYS_API_TOKEN || "";
   if (!token) {
     res.status(500).json({ success: false, error: "Missing PORTAL_BIRTHDAYS_API_TOKEN" });
@@ -20,7 +21,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    const portalRes = await fetch(apiUrl, {
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit ?? 200)));
+    const url = new URL(baseUrl);
+    url.searchParams.set("limit", String(limit));
+
+    const portalRes = await fetch(url.toString(), {
       headers: {
         accept: "application/json",
         "x-portal-token": token,
@@ -30,12 +35,18 @@ export default async function handler(req, res) {
     const contentType = portalRes.headers.get("content-type") || "";
     const text = await portalRes.text();
     if (!portalRes.ok) {
-      res.status(502).json({ success: false, error: `Portal error (${portalRes.status})` });
+      res
+        .status(502)
+        .json({ success: false, error: `Portal error (${portalRes.status})`, detail: text.slice(0, 180) });
       return;
     }
 
     if (!contentType.includes("application/json")) {
-      res.status(502).json({ success: false, error: "Portal did not return JSON" });
+      res.status(502).json({
+        success: false,
+        error: "Portal did not return JSON (Cloudflare challenge?)",
+        detail: text.slice(0, 180),
+      });
       return;
     }
 
@@ -45,4 +56,3 @@ export default async function handler(req, res) {
     res.status(500).json({ success: false, error: e instanceof Error ? e.message : "Request failed" });
   }
 }
-

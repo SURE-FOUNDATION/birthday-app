@@ -13,11 +13,13 @@ export default function Dashboard({ user }) {
   const [logs, setLogs] = useState([]);
   const [birthdays, setBirthdays] = useState([]);
   const [birthdayDate, setBirthdayDate] = useState("");
+  const [birthdayError, setBirthdayError] = useState("");
   const [status, setStatus] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
     setStatus(null);
+    setBirthdayError("");
     try {
       const [settingsRes, runsRes, logsRes, birthdaysRes] = await Promise.all([
         fetch("/api/settings").then((r) => r.json()),
@@ -38,6 +40,10 @@ export default function Dashboard({ user }) {
       if (birthdaysRes?.success) {
         setBirthdays(Array.isArray(birthdaysRes.birthdays) ? birthdaysRes.birthdays : []);
         setBirthdayDate(String(birthdaysRes.date || ""));
+      } else if (birthdaysRes && birthdaysRes.success === false) {
+        setBirthdays([]);
+        setBirthdayDate("");
+        setBirthdayError(birthdaysRes.error || "Unable to load birthdays from portal.");
       }
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Unable to load data.");
@@ -99,6 +105,8 @@ export default function Dashboard({ user }) {
         <div className="muted" style={{ marginBottom: 10 }}>
           {birthdayDate ? `Date: ${birthdayDate}` : "Date: —"} • {birthdays.length} student(s)
         </div>
+
+        {birthdayError && <div className="notice error">{birthdayError}</div>}
 
         {birthdays.length === 0 ? (
           <div className="muted">No birthdays found for today.</div>
