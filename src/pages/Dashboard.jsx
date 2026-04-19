@@ -11,16 +11,19 @@ export default function Dashboard({ user }) {
   const [settings, setSettings] = useState(null);
   const [runs, setRuns] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [birthdays, setBirthdays] = useState([]);
+  const [birthdayDate, setBirthdayDate] = useState("");
   const [status, setStatus] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
     setStatus(null);
     try {
-      const [settingsRes, runsRes, logsRes] = await Promise.all([
+      const [settingsRes, runsRes, logsRes, birthdaysRes] = await Promise.all([
         fetch("/api/settings").then((r) => r.json()),
         fetch("/api/runs?limit=20").then((r) => r.json()),
         fetch("/api/logs?limit=50").then((r) => r.json()),
+        fetch("/api/birthdays?limit=200").then((r) => r.json()),
       ]);
 
       if (!settingsRes.success || !runsRes.success || !logsRes.success) {
@@ -31,6 +34,11 @@ export default function Dashboard({ user }) {
       setSettings(settingsRes.settings ?? null);
       setRuns(runsRes.runs ?? []);
       setLogs(logsRes.logs ?? []);
+
+      if (birthdaysRes?.success) {
+        setBirthdays(Array.isArray(birthdaysRes.birthdays) ? birthdaysRes.birthdays : []);
+        setBirthdayDate(String(birthdaysRes.date || ""));
+      }
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Unable to load data.");
     }
@@ -86,6 +94,36 @@ export default function Dashboard({ user }) {
 
   return (
     <div className="stack">
+      <div className="card">
+        <h2 className="h2">Today&apos;s Birthdays</h2>
+        <div className="muted" style={{ marginBottom: 10 }}>
+          {birthdayDate ? `Date: ${birthdayDate}` : "Date: —"} • {birthdays.length} student(s)
+        </div>
+
+        {birthdays.length === 0 ? (
+          <div className="muted">No birthdays found for today.</div>
+        ) : (
+          <div className="table-scroll">
+            <div className="table table-birthdays">
+              <div className="thead">
+                <div>Student</div>
+                <div>Reg No</div>
+                <div>Class</div>
+                <div>Age</div>
+              </div>
+              {birthdays.map((b) => (
+                <div key={`${b.reg_number}-${b.name}`} className="trow">
+                  <div className="cell-strong">{b.name}</div>
+                  <div className="mono">{b.reg_number}</div>
+                  <div>{b.class}</div>
+                  <div>{b.age ?? "—"}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="grid">
         <div className="card">
           <h2 className="h2">Status</h2>
@@ -153,6 +191,7 @@ export default function Dashboard({ user }) {
 
       <div className="card">
         <h2 className="h2">Recent runs</h2>
+        <div className="table-scroll">
         <div className="table">
           <div className="thead">
             <div>Ran at</div>
@@ -177,10 +216,12 @@ export default function Dashboard({ user }) {
             ))
           )}
         </div>
+        </div>
       </div>
 
       <div className="card">
         <h2 className="h2">Recent emails</h2>
+        <div className="table-scroll">
         <div className="table">
           <div className="thead">
             <div>Time</div>
@@ -206,6 +247,7 @@ export default function Dashboard({ user }) {
               </div>
             ))
           )}
+        </div>
         </div>
       </div>
     </div>

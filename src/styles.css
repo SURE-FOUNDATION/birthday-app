@@ -239,6 +239,12 @@ a {
   overflow: hidden;
 }
 
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .thead,
 .trow {
   display: grid;
@@ -246,6 +252,11 @@ a {
   gap: 10px;
   padding: 10px 12px;
   align-items: center;
+}
+
+.table-birthdays .thead,
+.table-birthdays .trow {
+  grid-template-columns: 2fr 1.2fr 1fr 0.6fr;
 }
 
 .thead {
@@ -259,6 +270,23 @@ a {
 .trow {
   border-top: 1px solid var(--border);
   font-size: 13px;
+}
+
+.cell-strong {
+  font-weight: 800;
+  color: var(--primary);
+}
+
+@media (max-width: 720px) {
+  .thead,
+  .trow {
+    min-width: 780px;
+  }
+
+  .table-birthdays .thead,
+  .table-birthdays .trow {
+    min-width: 620px;
+  }
 }
 
 .tag {
